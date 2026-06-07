@@ -49,6 +49,23 @@ def _base_name(pkg: str) -> str:
     return pkg.strip()
 
 
+def _module_version(name: str) -> str:
+    """설치명 또는 import명으로 버전을 최대한 알아낸다.
+
+    1) 배포 메타데이터(importlib.metadata) → 2) 모듈 import 후 __version__ 순으로 시도.
+    """
+    try:
+        return _md.version(name)
+    except Exception:
+        pass
+    mod = _PYPI_TO_IMPORT.get(name.lower(), name).split(".")[0]
+    try:
+        m = importlib.import_module(mod)
+        return getattr(m, "__version__", None) or str(getattr(m, "version", "")) or "버전 미상"
+    except Exception:
+        return "확인 불가"
+
+
 def check_and_install(packages_str: str, install: bool = True,
                       show_versions: bool = True) -> None:
     """packages_str에 적은 패키지를 점검하고, 없으면 설치한 뒤 버전을 출력한다.
@@ -80,16 +97,15 @@ def check_and_install(packages_str: str, install: bool = True,
             print(f"  ✗ {name} 설치 실패: {exc}")
 
     if show_versions:
-        print("\n─── 설치된 버전 ───")
-        print(f"  {'Python':22} {sys.version.split()[0]}")
+        import platform
+        print("\n─── 버전 정보 ───")
+        print(f"  {'Python':24} {platform.python_version()}")
+        print(f"  {'OS':24} {platform.platform()}")
         for spec in pkgs:
             name = _base_name(spec)
-            if name in ("version_information", "pip", "setuptools", "wheel"):
+            if name in ("pip", "setuptools", "wheel"):
                 continue
-            try:
-                print(f"  {name:22} {_md.version(name)}")
-            except Exception:
-                print(f"  {name:22} (버전 확인 불가)")
+            print(f"  {name:24} {_module_version(name)}")
     print("패키지 확인 완료\n")
 
 
