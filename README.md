@@ -6,7 +6,7 @@
 
 ```python
 import urllib.request, sys, os
-URL = "https://raw.githubusercontent.com/guitar79/DSES_book_code/main/dses_utils.py"
+URL = "https://raw.githubusercontent.com/Kiehyun/DSES_book_code/main/dses_utils.py"
 if not os.path.exists("dses_utils.py"):
     urllib.request.urlretrieve(URL, "dses_utils.py")
 import dses_utils as du
