@@ -14,6 +14,7 @@
 
 함수 목록
     check_and_install(packages_str, install=True, show_versions=True)
+    set_korean_font()
     make_project_dir(name, base=".")
     download(url, dest, overwrite=False)
     save_figure(fig, path_without_ext, formats=("pdf", "png"), dpi=200)
@@ -156,3 +157,24 @@ def save_figure(fig, path_without_ext: str | Path,
         saved.append(out)
         print(f"{out} 저장됨")
     return saved
+
+
+def set_korean_font() -> None:
+    """matplotlib에서 한글이 깨지지 않도록 운영체제별 한글 폰트를 설정한다.
+
+    Windows: Malgun Gothic, macOS: AppleGothic, Linux: NanumGothic 을 우선 사용하며,
+    음수 부호(−)가 네모(□)로 표시되는 문제(axes.unicode_minus)도 함께 해결한다.
+    각 노트북 맨 앞에서 한 번만 호출하면 된다.
+    """
+    import platform
+    import matplotlib.pyplot as plt
+
+    system = platform.system()
+    if system == "Windows":
+        plt.rcParams["font.family"] = ["Malgun Gothic", "Microsoft YaHei", "DejaVu Sans"]
+    elif system == "Darwin":  # macOS
+        plt.rcParams["font.family"] = ["AppleGothic", "Helvetica", "DejaVu Sans"]
+    else:  # Linux
+        plt.rcParams["font.family"] = ["NanumGothic", "DejaVu Sans"]
+    plt.rcParams["axes.unicode_minus"] = False  # 마이너스 기호 표시 오류 수정
+    print(f"한글 폰트 설정: {plt.rcParams['font.family'][0]}")
