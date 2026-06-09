@@ -14,7 +14,6 @@
 
 함수 목록
     check_and_install(packages_str, install=True, show_versions=True)
-    set_korean_font()
     make_project_dir(name, base=".")
     download(url, dest, overwrite=False)
     save_figure(fig, path_without_ext, formats=("pdf", "png"), dpi=200)
@@ -77,29 +76,28 @@ def check_and_install(packages_str: str, install: bool = True,
         show_versions : 설치된 버전 표를 출력할지 여부(기본 True)
     """
     pkgs = _split_packages(packages_str)
-    print("─── 패키지 확인 및 설치 ───")
+    # 패키지 점검/설치는 '조용히' 수행한다(✓/·/✗ 진행 로그를 출력하지 않음).
+    # 설치 결과는 아래 '버전 정보' 표로 확인할 수 있으며, 설치에 실패한 패키지는
+    # 표에서 '확인 불가'로 표시된다.
     for spec in pkgs:
         name = _base_name(spec)
         if name in ("version_information", "pip", "setuptools", "wheel"):
             continue
         mod = _PYPI_TO_IMPORT.get(name.lower(), name).split(".")[0]
         if importlib.util.find_spec(mod) is not None:
-            print(f"  ✓ {name} 이미 설치됨")
             continue
         if not install:
-            print(f"  ✗ {name} 미설치(install=False)")
             continue
-        print(f"  · {name} 설치 중...")
         try:
             subprocess.run([sys.executable, "-m", "pip", "install", "-q", spec],
-                           check=True)
-            print(f"  ✓ {name} 설치 완료")
-        except Exception as exc:
-            print(f"  ✗ {name} 설치 실패: {exc}")
+                           check=True,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception:
+            pass
 
     if show_versions:
         import platform
-        print("\n─── 버전 정보 ───")
+        print("─── 버전 정보 ───")
         print(f"  {'Python':24} {platform.python_version()}")
         print(f"  {'OS':24} {platform.platform()}")
         for spec in pkgs:
@@ -110,11 +108,73 @@ def check_and_install(packages_str: str, install: bool = True,
     print("패키지 확인 완료\n")
 
 
-def make_project_dir(name: str, base: str | Path = ".") -> Path:
-    """프로젝트(자료 저장) 폴더를 만들고 경로를 반환한다(보통 name=노트북 파일명).
+def set_korean_font() -> None:
+    """matplotlib에서 한글이 깨지지 않도록 OS별 한글 글꼴과 마이너스 기호를 설정한다.
 
-    이미 있으면 그대로 두고 경로만 돌려준다.
+    Windows는 'Malgun Gothic', macOS는 'AppleGothic', 그 외(리눅스)는 'NanumGothic'을
+    우선 적용하고, 글꼴이 없을 때를 대비해 'DejaVu Sans'를 함께 지정한다. 각 노트북에
+    같은 코드를 반복해 넣지 않도록 이 함수 하나로 모은다.
+
+        import dses_utils as du
+        du.set_korean_font()
     """
+    import platform
+    import matplotlib.pyplot as plt
+
+    system = platform.system()
+    if system == "Windows":
+        plt.rcParams["font.family"] = ["Malgun Gothic", "Microsoft YaHei", "DejaVu Sans"]
+    elif system == "Darwin":  # macOS
+        plt.rcParams["font.family"] = ["AppleGothic", "Helvetica", "DejaVu Sans"]
+    else:  # Linux 등
+        plt.rcParams["font.family"] = ["NanumGothic", "DejaVu Sans"]
+    plt.rcParams["axes.unicode_minus"] = False  # 마이너스 기호 깨짐 방지
+
+
+def current_notebook_name():
+    """현재 실행 중인 노트북의 파일명(확장자 제외)을 자동으로 알아낸다.
+
+    환경별로 방법이 달라 순서대로 시도하고, 모두 실패하면 None을 반환한다.
+      1) VS Code: 노트북 네임스페이스의 전역 변수 __vsc_ipynb_file__
+      2) JupyterLab/Notebook: ipynbname 패키지(설치돼 있으면)
+      3) Colab: COLAB_NOTEBOOK_ID 등은 파일명을 주지 않으므로 생략
+    """
+    import os
+    # 1) VS Code — 노트북 사용자 네임스페이스에 전체 경로가 들어 있다.
+    try:
+        from IPython import get_ipython
+        ns = get_ipython().user_ns
+        p = ns.get("__vsc_ipynb_file__")
+        if p:
+            return os.path.splitext(os.path.basename(p))[0]
+    except Exception:
+        pass
+    # 2) ipynbname (classic Jupyter / JupyterLab)
+    try:
+        import ipynbname
+        return ipynbname.name()
+    except Exception:
+        pass
+    return None
+
+
+def make_project_dir(name=None, base: str | Path = ".") -> Path:
+    """프로젝트(자료 저장) 폴더를 만들고 경로를 반환한다.
+
+    name 을 생략(None)하면 현재 노트북 파일명(확장자 제외)을 자동으로 사용한다.
+    자동 인식에 실패하면 알기 쉬운 오류를 내므로, 그때는 이름을 직접 지정한다.
+    이미 있으면 그대로 두고 경로만 돌려준다.
+
+        PROJ = du.make_project_dir()                 # 노트북 파일명 자동
+        PROJ = du.make_project_dir("내_폴더이름")     # 직접 지정
+    """
+    if name is None:
+        name = current_notebook_name()
+        if not name:
+            raise ValueError(
+                "노트북 파일명을 자동으로 알 수 없습니다. "
+                "make_project_dir(\"폴더이름\") 처럼 이름을 직접 지정하세요."
+            )
     path = Path(base) / name
     if path.exists():
         print(f"{path} (이미 있음)")
@@ -157,24 +217,3 @@ def save_figure(fig, path_without_ext: str | Path,
         saved.append(out)
         print(f"{out} 저장됨")
     return saved
-
-
-def set_korean_font() -> None:
-    """matplotlib에서 한글이 깨지지 않도록 운영체제별 한글 폰트를 설정한다.
-
-    Windows: Malgun Gothic, macOS: AppleGothic, Linux: NanumGothic 을 우선 사용하며,
-    음수 부호(−)가 네모(□)로 표시되는 문제(axes.unicode_minus)도 함께 해결한다.
-    각 노트북 맨 앞에서 한 번만 호출하면 된다.
-    """
-    import platform
-    import matplotlib.pyplot as plt
-
-    system = platform.system()
-    if system == "Windows":
-        plt.rcParams["font.family"] = ["Malgun Gothic", "Microsoft YaHei", "DejaVu Sans"]
-    elif system == "Darwin":  # macOS
-        plt.rcParams["font.family"] = ["AppleGothic", "Helvetica", "DejaVu Sans"]
-    else:  # Linux
-        plt.rcParams["font.family"] = ["NanumGothic", "DejaVu Sans"]
-    plt.rcParams["axes.unicode_minus"] = False  # 마이너스 기호 표시 오류 수정
-    print(f"한글 폰트 설정: {plt.rcParams['font.family'][0]}")
