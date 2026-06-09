@@ -16,6 +16,7 @@
     check_and_install(packages_str, install=True, show_versions=True)
     make_project_dir(name, base=".")
     download(url, dest, overwrite=False)
+    preview_text(path, n=20, encoding="utf-8")
     save_figure(fig, path_without_ext, formats=("pdf", "png"), dpi=200)
 """
 from __future__ import annotations
@@ -185,20 +186,58 @@ def make_project_dir(name=None, base: str | Path = ".") -> Path:
 
 
 def download(url: str, dest: str | Path, overwrite: bool = False) -> Path:
-    """urllib.request로 파일을 내려받는다(wget 설치 불필요).
+    """웹에서 파일을 내려받아 dest 경로에 저장한다(wget 설치 불필요).
 
-    dest가 이미 있고 overwrite=False면 다시 받지 않는다.
+    dest가 이미 있고 overwrite=False면 다시 받지 않는다(큰 데이터 재다운로드 방지).
+    requests가 설치돼 있으면 스트리밍으로 받고(구글 드라이브/리다이렉트에 강함),
+    없으면 표준 라이브러리 urllib로 받는다. 노트북마다 download_with_requests 같은
+    함수를 따로 정의하지 않아도 되도록 이 함수 하나로 모은다.
+
+        du.download("https://.../data.csv", PROJ / "data.csv")
+        du.download(url, PROJ / "img.fit", overwrite=True)   # 항상 새로 받기
     """
     dest = Path(dest)
     dest.parent.mkdir(parents=True, exist_ok=True)
     if dest.exists() and not overwrite:
         print(f"{dest} (이미 있음 — 건너뜀)")
         return dest
-    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-    with urllib.request.urlopen(req) as resp, open(dest, "wb") as fh:
-        fh.write(resp.read())
+    try:
+        import requests  # 있으면 스트리밍 다운로드 사용
+        with requests.get(url, stream=True, timeout=120,
+                          headers={"User-Agent": "Mozilla/5.0"}) as resp:
+            resp.raise_for_status()
+            with open(dest, "wb") as fh:
+                for chunk in resp.iter_content(chunk_size=8192):
+                    if chunk:
+                        fh.write(chunk)
+    except ImportError:
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req) as resp, open(dest, "wb") as fh:
+            fh.write(resp.read())
     print(f"{dest} 다운로드 완료")
     return dest
+
+
+def preview_text(path: str | Path, n: int = 20, encoding: str = "utf-8") -> list[str]:
+    """텍스트 파일의 앞부분 n줄을 화면에 출력한다(OS 무관 — !head 대체).
+
+    셸 명령 `!head -n N 파일` 은 Windows에서 동작하지 않으므로, 어디서나 같은
+    결과를 얻도록 이 함수로 모은다. 출력한 줄들의 리스트를 반환한다.
+
+        du.preview_text(PROJ / "data.csv")          # 앞 20줄
+        du.preview_text(fpaths[0], n=65)            # 앞 65줄
+    """
+    path = Path(path)
+    lines: list[str] = []
+    with open(path, "r", encoding=encoding, errors="replace") as f:
+        for i, line in enumerate(f):
+            if i >= n:
+                break
+            lines.append(line.rstrip("\n"))
+    print(f"─── {path.name} (첫 {len(lines)}줄) ───")
+    for ln in lines:
+        print(ln)
+    return lines
 
 
 def save_figure(fig, path_without_ext: str | Path,
