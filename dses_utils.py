@@ -16,7 +16,8 @@
     check_and_install(packages_str, install=True, show_versions=True)
     make_project_dir(name, base=".")
     download(url, dest, overwrite=False)
-    preview_text(path, n=20, encoding="utf-8")
+    list_files(directory, ext="*", recursive=False, show=True)
+    preview_text(path, n=20, encoding=None, number=True)
     save_figure(fig, path_without_ext, formats=("pdf", "png"), dpi=200)
 """
 from __future__ import annotations
@@ -218,25 +219,89 @@ def download(url: str, dest: str | Path, overwrite: bool = False) -> Path:
     return dest
 
 
-def preview_text(path: str | Path, n: int = 20, encoding: str = "utf-8") -> list[str]:
-    """텍스트 파일의 앞부분 n줄을 화면에 출력한다(OS 무관 — !head 대체).
+def list_files(directory: str | Path, ext: str = "*",
+               recursive: bool = False, show: bool = True) -> list[Path]:
+    """폴더 안의 파일을 확장자로 추려 정렬된 목록(list[Path])으로 돌려준다.
+
+    각 노트북에서 반복하던 아래 코드를 한 줄로 줄이기 위한 함수다.
+
+        fpaths = sorted(list(PROJ.glob('*.csv')))
+        print(f"fpaths: {fpaths}")
+        print(f"len(fpaths): {len(fpaths)}")
+
+    매개변수
+        directory : 찾을 폴더(보통 make_project_dir로 만든 PROJ)
+        ext       : 확장자. 'csv', '.csv', '*.csv' 모두 같게 처리하며,
+                    '*'(기본)이면 모든 파일을 대상으로 한다.
+        recursive : True면 하위 폴더까지 재귀(rglob)로 찾는다(기본 False).
+        show      : True면 찾은 파일 목록과 개수를 화면에 출력한다(기본 True).
+
+        fpaths = du.list_files(PROJ, "csv")          # PROJ 안의 *.csv
+        fpaths = du.list_files(PROJ, ".fits")        # 점을 붙여도 됨
+        fpaths = du.list_files(PROJ, "txt", recursive=True)  # 하위 폴더까지
+    """
+    directory = Path(directory)
+    # 'csv' / '.csv' / '*.csv' → 'csv' 로 정규화한 뒤 '*.csv' 패턴을 만든다.
+    suffix = ext.lstrip("*").lstrip(".").strip()
+    pattern = "*" if suffix in ("", "*") else f"*.{suffix}"
+    globber = directory.rglob if recursive else directory.glob
+    fpaths = sorted(p for p in globber(pattern) if p.is_file())
+    if show:
+        print(f"─── {directory}/{pattern} (총 {len(fpaths)}개) ───")
+        for p in fpaths:
+            print(f"  {p}")
+    return fpaths
+
+
+def preview_text(path: str | Path, n: int = 20,
+                 encoding: str | list[str] | None = None,
+                 number: bool = True) -> list[str]:
+    """텍스트 파일의 앞부분 n줄을 줄 번호와 함께 출력한다(OS 무관 — !head 대체).
 
     셸 명령 `!head -n N 파일` 은 Windows에서 동작하지 않으므로, 어디서나 같은
-    결과를 얻도록 이 함수로 모은다. 출력한 줄들의 리스트를 반환한다.
+    결과를 얻도록 이 함수로 모은다. 한글 파일이 깨지지 않도록 여러 인코딩
+    (utf-8 → cp949 → euc-kr)을 차례로 시도하며, 출력한 줄들의 리스트를 반환한다.
 
-        du.preview_text(PROJ / "data.csv")          # 앞 20줄
-        du.preview_text(fpaths[0], n=65)            # 앞 65줄
+    매개변수
+        path     : 미리볼 파일 경로(보통 fpaths[0])
+        n        : 출력할 줄 수(기본 20)
+        encoding : 시도할 인코딩. None(기본)이면 utf-8/cp949/euc-kr을 차례로 시도.
+                   문자열 하나("utf-8") 또는 목록(["utf-8", "cp949"])도 받는다.
+        number   : True면 줄 앞에 줄 번호를 붙여 출력한다(기본 True).
+
+        du.preview_text(PROJ / "data.csv")          # 앞 20줄(인코딩 자동)
+        du.preview_text(fpaths[0], n=10)            # 앞 10줄
     """
     path = Path(path)
+    if encoding is None:
+        encodings = ["utf-8", "cp949", "euc-kr"]
+    elif isinstance(encoding, str):
+        encodings = [encoding]
+    else:
+        encodings = list(encoding)
+
     lines: list[str] = []
-    with open(path, "r", encoding=encoding, errors="replace") as f:
-        for i, line in enumerate(f):
-            if i >= n:
-                break
-            lines.append(line.rstrip("\n"))
-    print(f"─── {path.name} (첫 {len(lines)}줄) ───")
-    for ln in lines:
-        print(ln)
+    used: str | None = None
+    for enc in encodings:
+        try:
+            with open(path, "r", encoding=enc) as f:
+                buf = []
+                for i, line in enumerate(f):
+                    if i >= n:
+                        break
+                    buf.append(line.rstrip("\n"))
+            lines, used = buf, enc
+            break
+        except UnicodeDecodeError:
+            continue
+
+    if used is None:
+        print(f"지원한 인코딩({', '.join(encodings)})으로 파일을 읽지 못했습니다.")
+        return lines
+
+    print(f"─── {path.name} (첫 {len(lines)}줄, 인코딩: {used}) ───")
+    for i, ln in enumerate(lines, 1):
+        print(f"{i:3d}: {ln}" if number else ln)
     return lines
 
 
