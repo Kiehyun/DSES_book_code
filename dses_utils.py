@@ -16,7 +16,7 @@
     check_and_install(packages_str, install=True, show_versions=True)
     make_project_dir(name, base=".")
     download(url, dest, overwrite=False)
-    list_files(directory, ext="*", recursive=False, show=True)
+    list_files(directory, ext="*", pattern=None, recursive=False, show=True)
     preview_text(path, n=20, encoding=None, number=True)
     save_figure(fig, path_without_ext, formats=("pdf", "png"), dpi=200)
 """
@@ -219,7 +219,8 @@ def download(url: str, dest: str | Path, overwrite: bool = False) -> Path:
     return dest
 
 
-def list_files(directory: str | Path, ext: str = "*",
+def list_files(directory: str | Path, ext: str | list[str] = "*",
+               pattern: str | None = None,
                recursive: bool = False, show: bool = True) -> list[Path]:
     """폴더 안의 파일을 확장자로 추려 정렬된 목록(list[Path])으로 돌려준다.
 
@@ -231,23 +232,43 @@ def list_files(directory: str | Path, ext: str = "*",
 
     매개변수
         directory : 찾을 폴더(보통 make_project_dir로 만든 PROJ)
-        ext       : 확장자. 'csv', '.csv', '*.csv' 모두 같게 처리하며,
-                    '*'(기본)이면 모든 파일을 대상으로 한다.
+        ext       : 확장자. 'csv', '.csv', '*.csv' 모두 같게 처리한다.
+                    '*'(기본)이면 모든 파일. 'fit*'처럼 뒤에 와일드카드를 붙여도 되고,
+                    ['csv', 'txt']처럼 목록으로 주면 여러 확장자를 한 번에 모은다.
+        pattern   : 확장자만으로 표현하기 어려운 경우(접두어 등) glob 패턴을 직접 지정.
+                    예) 'M35*.fit*', '*bias-e*.fit*'. 주면 ext는 무시된다.
         recursive : True면 하위 폴더까지 재귀(rglob)로 찾는다(기본 False).
         show      : True면 찾은 파일 목록과 개수를 화면에 출력한다(기본 True).
 
-        fpaths = du.list_files(PROJ, "csv")          # PROJ 안의 *.csv
-        fpaths = du.list_files(PROJ, ".fits")        # 점을 붙여도 됨
-        fpaths = du.list_files(PROJ, "txt", recursive=True)  # 하위 폴더까지
+        fpaths = du.list_files(PROJ, "csv")              # PROJ 안의 *.csv
+        fpaths = du.list_files(PROJ, "fit*")             # *.fit, *.fits ...
+        fpaths = du.list_files(PROJ, ["csv", "txt"])     # 여러 확장자
+        fpaths = du.list_files(PROJ, pattern="M35*.fit*")  # 접두어가 있는 패턴
     """
     directory = Path(directory)
-    # 'csv' / '.csv' / '*.csv' → 'csv' 로 정규화한 뒤 '*.csv' 패턴을 만든다.
-    suffix = ext.lstrip("*").lstrip(".").strip()
-    pattern = "*" if suffix in ("", "*") else f"*.{suffix}"
     globber = directory.rglob if recursive else directory.glob
-    fpaths = sorted(p for p in globber(pattern) if p.is_file())
+
+    if pattern is not None:
+        patterns = [pattern]
+    else:
+        exts = [ext] if isinstance(ext, str) else list(ext)
+        patterns = []
+        for e in exts:
+            # 'csv' / '.csv' / '*.csv' → 'csv' 로 정규화한 뒤 '*.csv' 패턴을 만든다.
+            suffix = e.lstrip("*").lstrip(".").strip()
+            patterns.append("*" if suffix in ("", "*") else f"*.{suffix}")
+
+    seen: set = set()
+    fpaths: list[Path] = []
+    for pat in patterns:
+        for p in globber(pat):
+            if p.is_file() and p not in seen:
+                seen.add(p)
+                fpaths.append(p)
+    fpaths.sort()
     if show:
-        print(f"─── {directory}/{pattern} (총 {len(fpaths)}개) ───")
+        shown = pattern if pattern is not None else ", ".join(patterns)
+        print(f"─── {directory}/{shown} (총 {len(fpaths)}개) ───")
         for p in fpaths:
             print(f"  {p}")
     return fpaths
