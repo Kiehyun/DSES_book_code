@@ -1,12 +1,13 @@
-# DSES_book_code
+# dses_utils
 
-지구과학 데이터 사이언스 노트북 공통 유틸리티(`dses_utils.py`).
+지구과학 데이터 사이언스(DSES) 공통 유틸리티(`dses_utils.py`).
+도서 집필·강의자료·실습 노트북 등 볼트 전체에서 공통으로 사용합니다.
 
 ## 코랩/주피터에서 사용
 
 ```python
 import urllib.request, sys, os
-URL = "https://raw.githubusercontent.com/Kiehyun/DSES_book_code/main/dses_utils.py"
+URL = "https://raw.githubusercontent.com/Kiehyun/dses_utils/main/dses_utils.py"
 if not os.path.exists("dses_utils.py"):
     urllib.request.urlretrieve(URL, "dses_utils.py")
 import dses_utils as du

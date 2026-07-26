@@ -139,7 +139,8 @@ def current_notebook_name():
     환경별로 방법이 달라 순서대로 시도하고, 모두 실패하면 None을 반환한다.
       1) VS Code: 노트북 네임스페이스의 전역 변수 __vsc_ipynb_file__
       2) JupyterLab/Notebook: ipynbname 패키지(설치돼 있으면)
-      3) Colab: COLAB_NOTEBOOK_ID 등은 파일명을 주지 않으므로 생략
+      3) 자동 실행(책 빌드): 환경변수 DSES_NOTEBOOK_NAME
+      4) Colab: COLAB_NOTEBOOK_ID 등은 파일명을 주지 않으므로 생략
     """
     import os
     # 1) VS Code — 노트북 사용자 네임스페이스에 전체 경로가 들어 있다.
@@ -157,6 +158,11 @@ def current_notebook_name():
         return ipynbname.name()
     except Exception:
         pass
+    # 3) 책 빌드용 일괄 실행(scripts/execute_notebooks.py)에서는 창이 없어 1·2가 모두
+    #    실패한다. 실행기가 노트북 이름을 이 환경변수에 넣어 주므로 그것을 쓴다.
+    name = os.environ.get("DSES_NOTEBOOK_NAME")
+    if name:
+        return os.path.splitext(os.path.basename(name))[0]
     return None
 
 
